@@ -60,7 +60,7 @@ jobs:
 
   migrate-repo:
     needs: validate-inputs
-    runs-on: self-hosted-nonprod
+    runs-on: ubuntu-latest
     env:
       SOURCE_ORG: ${{ needs.validate-inputs.outputs.SOURCE_ORG }}
       DEST_ORG: ${{ needs.validate-inputs.outputs.DEST_ORG }}
