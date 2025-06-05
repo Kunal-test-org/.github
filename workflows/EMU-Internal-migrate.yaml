@@ -1,4 +1,4 @@
-name: GitHubEMU Internal Org. Migration
+name: GitHubEMU Internal Or. Migration
 on:
   workflow_dispatch:
     inputs:
