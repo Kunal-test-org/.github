@@ -32,7 +32,7 @@ on:
 
 jobs:
   validate-inputs:
-    runs-on: self-hosted-nonprod
+    runs-on: ubuntu-latest
     outputs:
       SOURCE_ORG: ${{ steps.set-vars.outputs.SOURCE_ORG }}
       DEST_ORG: ${{ steps.set-vars.outputs.DEST_ORG }}
