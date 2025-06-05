@@ -7,16 +7,7 @@ on:
         required: true
         type: choice
         options:
-        - cvs-cdn
-        - cvs-health-api-platform
-        - cvs-health-enterprise-code
-        - cvs-health-github-management
-        - cvs-health-pcw-source-code
-        - cvs-health-sandbox
-        - cvs-health-source-code
-        - cvs-legacy-source-code
-        - digital-cap
-        - digital-observability
+        - Kunal-test-org
       source_repo:
         description: 'Repository Name to migrate from the source organization'
         required: true
@@ -25,16 +16,7 @@ on:
         required: true
         type: choice
         options:
-        - cvs-cdn
-        - cvs-health-api-platform
-        - cvs-health-enterprise-code
-        - cvs-health-github-management
-        - cvs-health-pcw-source-code
-        - cvs-health-sandbox
-        - cvs-health-source-code
-        - cvs-legacy-source-code
-        - digital-cap
-        - digital-observability
+        - Kunal-migrated-org
       destination_repo:
         description: 'Repository Name in destination organization (defaults to source repo name if not specified)'
         required: false
