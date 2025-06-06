@@ -1,4 +1,6 @@
-name: GitHubEMU Internal Or. Migration
+
+name: GitHubEMU Multi-Repo Migration
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,10 +19,11 @@ on:
         type: choice
         options:
         - Kunal-migrated-org
-      destination_repo:
-        description: 'Repository Name in destination organization (defaults to source repo name if not specified)'
-        required: false
-        default: ''
+ 
+      repo_list:
+        description: 'Comma-separated list of repositories to migrate'
+        required: true
+
       repo_admin:
         description: 'GitHub Username for Admin Access (e.g., Fname-Lname_cvsh)'
         required: true
@@ -31,140 +34,67 @@ on:
         default: ''
 
 jobs:
-  validate-inputs:
-    runs-on: ubuntu-latest
-    outputs:
-      SOURCE_ORG: ${{ steps.set-vars.outputs.SOURCE_ORG }}
-      DEST_ORG: ${{ steps.set-vars.outputs.DEST_ORG }}
-      DEST_REPO: ${{ steps.set-vars.outputs.DEST_REPO }}
-    steps:
-    - name: Set and validate variables
-      id: set-vars
-      run: |
-        # Set variables
-        SOURCE_ORG="${{ github.event.inputs.source_org }}"
-        DEST_ORG="${{ github.event.inputs.destination_org }}"
-        DEST_REPO="${{ github.event.inputs.destination_repo || github.event.inputs.source_repo }}"
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Convert repo list to matrix
+        id: set-matrix
+        run: |
+          repos="${{ github.event.inputs.repo_list }}"
+          json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})')
+          echo "matrix={\"include\":$json}" >> $GITHUB_OUTPUT
 
-        # Check if source and destination are the same
-        if [ "$SOURCE_ORG" = "$DEST_ORG" ] && [ "${{ github.event.inputs.source_repo }}" = "$DEST_REPO" ]; then
-          echo "Error: Source and destination repositories are identical!"
-          echo "You cannot migrate a repository to itself."
-          exit 1
-        fi
+  migrate-repos:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      SOURCE_ORG: ${{ github.event.inputs.source_org }}
+      DEST_ORG: ${{ github.event.inputs.destination_org }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      REPO_ADMIN: ${{ github.event.inputs.repo_admin }}
+      SNOW_APP_ID: ${{ github.event.inputs.snow_app_id }}
+    steps:
+      - name: Install GitHub CLI
+        run: |
+          sudo apt update && sudo apt install gh -y
 
-        # Output variables
-        echo "SOURCE_ORG=$SOURCE_ORG" >> $GITHUB_OUTPUT
-        echo "DEST_ORG=$DEST_ORG" >> $GITHUB_OUTPUT
-        echo "DEST_REPO=$DEST_REPO" >> $GITHUB_OUTPUT
+      - name: Migrate repository ${{ matrix.repo }}
+        run: |
+          SRC_REPO="${{ matrix.repo }}"
+          DEST_REPO="${{ matrix.repo }}"
 
-  migrate-repo:
-    needs: validate-inputs
-    runs-on: ubuntu-latest
-    env:
-      SOURCE_ORG: ${{ needs.validate-inputs.outputs.SOURCE_ORG }}
-      DEST_ORG: ${{ needs.validate-inputs.outputs.DEST_ORG }}
-      DEST_REPO: ${{ needs.validate-inputs.outputs.DEST_REPO }}
-    steps:
-    - name: Install GitHub CLI
-      run: |
-        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
+          echo "Cloning $SOURCE_ORG/$SRC_REPO..."
+          git clone --mirror https://x-access-token:${GH_TOKEN}@github.com/$SOURCE_ORG/$SRC_REPO.git || exit 0
 
-    - name: Verify GitHub Authentication
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        # Verify token has appropriate permissions
-        echo "Verifying GitHub authentication..."
-        echo "Testing destination organization access..."
-        gh api --method GET "orgs/$DEST_ORG" || {
-          echo "Error: Unable to access destination organization. Token may not have proper permissions."
-          echo "Required permissions: Admin access to destination organization"
-          exit 1
-        }
+          cd $SRC_REPO.git
+          git for-each-ref refs/pull/ --format='%(refname)' | while read ref; do
+            git update-ref -d "$ref"
+          done
 
-    - name: Create Destination Repository
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        echo "Migrating from: $SOURCE_ORG/${{ github.event.inputs.source_repo }}"
-        echo "Migrating to: $DEST_ORG/$DEST_REPO"
+          echo "Creating or pushing to $DEST_ORG/$DEST_REPO..."
+          if ! gh repo view $DEST_ORG/$DEST_REPO &>/dev/null; then
+            gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/$SRC_REPO"
+          fi
 
-        echo "Checking if destination repository exists..."
-        if ! gh repo view $DEST_ORG/$DEST_REPO &>/dev/null; then
-          echo "Creating new repository $DEST_ORG/$DEST_REPO..."
-          # Create repository with explicit parameters instead of using --confirm flag
-          gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/${{ github.event.inputs.source_repo }}" || {
-            echo "Error: Failed to create repository. Checking token permissions..."
-            echo "Token information:"
-            gh auth status || echo "Unable to get auth status"
-            echo "Please ensure the GH_PAT secret has 'repo' and 'admin:org' permissions for $DEST_ORG organization."
-            exit 1
-          }
-          echo "Successfully created new repository."
-        else
-          echo "Repository $DEST_ORG/$DEST_REPO already exists, proceeding with migration..."
-        fi
+          git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
+          cd .. && rm -rf $SRC_REPO.git
+      - name: Set Admin and Metadata
+        run: |
+          echo "Setting admin access for $REPO_ADMIN..."
+          gh api -X PUT /repos/$DEST_ORG/${{ matrix.repo }}/collaborators/$REPO_ADMIN -f permission="admin" || true
 
-    - name: Clone and Push Repository
-      if: success()
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        echo "Cloning source repository..."
-        git clone --mirror https://x-access-token:${GH_TOKEN}@github.com/$SOURCE_ORG/${{ github.event.inputs.source_repo }}.git
-        if [ $? -ne 0 ]; then
-          echo "Error: Failed to clone source repository. Check if it exists and you have access."
-          exit 1
-        fi
-
-        echo "Pushing to destination repository..."
-        cd ${{ github.event.inputs.source_repo }}.git
-
-        # Remove pull request refs to prevent push errors
-        echo "Removing pull request references to avoid push errors..."
-        git for-each-ref refs/pull/ --format='%(refname)' | while read ref; do
-          git update-ref -d "$ref"
-        done
-
-        # Push everything except pull request refs
-        git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
-        if [ $? -ne 0 ]; then
-          echo "Error: Failed to push to destination repository. Check permissions."
-          exit 1
-        fi
-        echo "Successfully migrated repository content."
-        cd ..
-        rm -rf ${{ github.event.inputs.source_repo }}.git
-
-    - name: Configure Repository
-      if: success()
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        # Set admin access if provided
-        if [ ! -z "${{ github.event.inputs.repo_admin }}" ]; then
-          echo "Setting admin access..."
-          gh api -X PUT /repos/$DEST_ORG/$DEST_REPO/collaborators/${{ github.event.inputs.repo_admin }} \
-            -f permission="admin" || echo "Warning: Failed to set admin access"
-        fi
-
-        # Set snow-app-id if not empty
-        if [ ! -z "${{ github.event.inputs.snow_app_id }}" ]; then
-          echo "Setting snow-app-id..."
-          curl -s -L \
-            -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$DEST_ORG/$DEST_REPO/properties/values" \
-            -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"${{ github.event.inputs.snow_app_id }}\"}]}" || \
-            echo "Warning: Failed to set snow-app-id"
-        fi
-
-        echo "Migration from $SOURCE_ORG/${{ github.event.inputs.source_repo }} to $DEST_ORG/$DEST_REPO completed successfully."
+          if [ ! -z "$SNOW_APP_ID" ]; then
+            echo "Setting snow-app-id..."
+            curl -s -L \
+              -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
+              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
+          fi
