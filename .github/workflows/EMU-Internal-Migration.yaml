@@ -36,6 +36,8 @@ jobs:
         run: |
           repos="${{ github.event.inputs.repo_list }}"
           json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})')
+          echo "matrix={\"include\":$json}" >> matrix.json
+          cat matrix.json
           echo "matrix={\"include\":$json}" >> $GITHUB_OUTPUT
 
   migrate-repos:
