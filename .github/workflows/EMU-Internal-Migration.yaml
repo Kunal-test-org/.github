@@ -73,6 +73,9 @@ jobs:
           echo "Creating or pushing to $DEST_ORG/$DEST_REPO..."
           if ! gh repo view $DEST_ORG/$DEST_REPO &>/dev/null; then
             gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/$SRC_REPO"
+            echo "Waiting for GitHub to register the new repository..."
+            sleep 10
+          
           fi
 
           git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
