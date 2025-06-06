@@ -17,7 +17,7 @@ on:
           - Kunal-migrated-org
       repo_list:
         description: 'Comma-separated list of repositories to migrate'
-        required: true
+        required: false
       repo_admin:
         description: 'GitHub Username for Admin Access (e.g., Fname-Lname_cvsh)'
         required: true
