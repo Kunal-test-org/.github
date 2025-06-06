@@ -19,11 +19,10 @@ on:
         type: choice
         options:
         - Kunal-migrated-org
- 
-      repo_list:
-        description: 'Comma-separated list of repositories to migrate'
-        required: true
-
+      destination_repo:
+        description: 'Repository Name in destination organization (defaults to source repo name if not specified)'
+        required: false
+        default: ''
       repo_admin:
         description: 'GitHub Username for Admin Access (e.g., Fname-Lname_cvsh)'
         required: true
