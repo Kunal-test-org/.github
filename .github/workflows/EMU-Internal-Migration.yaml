@@ -54,6 +54,7 @@ jobs:
     steps:
       - name: Install GitHub CLI
         run: |
+          set -e
           sudo apt update && sudo apt install gh -y
 
       - name: Migrate repository ${{ matrix.repo }}
