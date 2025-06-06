@@ -63,7 +63,7 @@ jobs:
           DEST_REPO="${{ matrix.repo }}"
 
           echo "Cloning $SOURCE_ORG/$SRC_REPO..."
-          git clone --mirror https://x-access-token:${GH_TOKEN}@github.com/$SOURCE_ORG/$SRC_REPO.git || exit 0
+          git clone --mirror https://x-access-token:${GH_TOKEN}@github.com/$SOURCE_ORG/$SRC_REPO.git
 
           cd $SRC_REPO.git
           git for-each-ref refs/pull/ --format='%(refname)' | while read ref; do
