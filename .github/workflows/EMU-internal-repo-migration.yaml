@@ -1,0 +1,121 @@
+name: GitHubEMU Multi-Repo Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_org:
+        description: 'Source Organization'
+        required: true
+        type: choice
+        options:
+          - Kunal-test-org
+      destination_org:
+        description: 'Destination Organization'
+        required: true
+        type: choice
+        options:
+          - Kunal-migrated-org
+      repo_list:
+        description: 'Comma-separated list of repositories to migrate'
+        required: false
+      repo_admin:
+        description: 'GitHub Username for Admin Access (e.g., Fname-Lname_cvsh)'
+        required: true
+      snow_app_id:
+        description: 'CVS App ID (e.g., AMC012345)'
+        required: false
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Convert repo list to matrix
+        id: set-matrix
+        run: |
+          repos="${{ github.event.inputs.repo_list }}"
+          if [ -z "$repos" ]; then
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+          else
+            json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})' | jq -c '{include: .}')
+            echo "matrix=$json" >> $GITHUB_OUTPUT
+          fi
+  migrate-repos:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      SOURCE_ORG: ${{ github.event.inputs.source_org }}
+      DEST_ORG: ${{ github.event.inputs.destination_org }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      REPO_ADMIN: ${{ github.event.inputs.repo_admin }}
+      SNOW_APP_ID: ${{ github.event.inputs.snow_app_id }}
+    steps:
+      - name: Install GitHub CLI
+        run: |
+          set -e
+          sudo apt update && sudo apt install gh -y
+
+      - name: Migrate repository ${{ matrix.repo }}
+        run: |
+          SRC_REPO="${{ matrix.repo }}"
+          DEST_REPO="${{ matrix.repo }}"
+
+          echo "Cloning $SOURCE_ORG/$SRC_REPO..."
+          git clone --mirror https://x-access-token:${GH_TOKEN}@github.com/$SOURCE_ORG/$SRC_REPO.git
+
+          cd $SRC_REPO.git
+          git for-each-ref refs/pull/ --format='%(refname)' | while read ref; do
+            git update-ref -d "$ref"
+          done
+
+          echo "Creating or pushing to $DEST_ORG/$DEST_REPO..."
+          if ! gh repo view $DEST_ORG/$DEST_REPO &>/dev/null; then
+            gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/$SRC_REPO"
+            echo "Waiting for GitHub to register the new repository..."
+            sleep 10
+          fi
+
+          git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
+          cd .. && rm -rf $SRC_REPO.git
+
+      - name: Set Admin and Metadata
+        run: |
+          echo "Setting admin access for $REPO_ADMIN..."
+          gh api -X PUT /repos/$DEST_ORG/${{ matrix.repo }}/collaborators/$REPO_ADMIN -f permission="admin" || true
+
+          if [ ! -z "$SNOW_APP_ID" ]; then
+            echo "Setting snow-app-id..."
+            curl -s -L \
+              -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
+              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
+
+  set-secrets-and-variables:
+    needs: migrate-repos
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      DEST_ORG: ${{ github.event.inputs.destination_org }}
+    steps:
+      - name: Set secrets in destination repo
+        run: |
+          echo "Setting secrets for $DEST_ORG/${{ matrix.repo }}..."
+          gh secret set MY_SECRET \
+            --body "secret_value" \
+            --repo "$DEST_ORG/${{ matrix.repo }}"
+
+      - name: Set variables in destination repo
+        run: |
+          echo "Setting variables for $DEST_ORG/${{ matrix.repo }}..."
+          gh variable set MY_VAR \
+            --body "variable_value" \
+            --repo "$DEST_ORG/${{ matrix.repo }}"
