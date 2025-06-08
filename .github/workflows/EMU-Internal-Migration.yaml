@@ -122,3 +122,18 @@ jobs:
             --body "variable_value" \
             --repo "$DEST_ORG/${{ matrix.repo }}"
 
+      
+      - name: Convert repo list to matrix
+        id: set-matrix
+        run: |
+         repos="${{ github.event.inputs.repo_list }}"
+         if [ -z "$repos" ]; then
+         echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+         else
+           json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})' | jq -c '{include: .}')
+           echo "matrix=$json" >> $GITHUB_OUTPUT
+           fi
+
+
+
+
