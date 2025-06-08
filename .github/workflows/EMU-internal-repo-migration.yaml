@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_repos: ${{ steps.set-matrix.outputs.has_repos }}
     steps:
       - name: Convert repo list to matrix
         id: set-matrix
@@ -36,10 +37,13 @@ jobs:
           repos="${{ github.event.inputs.repo_list }}"
           if [ -z "$repos" ]; then
             echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "has_repos=false" >> $GITHUB_OUTPUT
           else
             json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})' | jq -c '{include: .}')
             echo "matrix=$json" >> $GITHUB_OUTPUT
+            echo "has_repos=true" >> $GITHUB_OUTPUT
           fi
+
   migrate-repos:
     needs: prepare-matrix
     runs-on: ubuntu-latest
@@ -98,6 +102,7 @@ jobs:
 
   set-secrets-and-variables:
     needs: migrate-repos
+    if: needs.prepare-matrix.outputs.has_repos == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
