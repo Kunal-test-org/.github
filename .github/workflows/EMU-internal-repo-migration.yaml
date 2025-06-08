@@ -84,7 +84,7 @@ jobs:
 
           git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
           cd .. && rm -rf $SRC_REPO.git
-
+          
       - name: Set Admin and Metadata
         run: |
           echo "Setting admin access for $REPO_ADMIN..."
@@ -98,7 +98,9 @@ jobs:
               -H "Authorization: token ${GH_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
-              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
+              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}"
+          fi
+
 
   set-secrets-and-variables:
     needs: migrate-repos
