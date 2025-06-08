@@ -95,3 +95,30 @@ jobs:
               "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
               -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
           fi
+
+  set-secrets-and-variables:
+    needs: migrate-repos
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      DEST_ORG: ${{ github.event.inputs.destination_org }}
+    steps:
+      - name: Set secrets in destination repo
+        run: |
+          # Example: Set a secret named MY_SECRET with value 'secret_value'
+          echo "Setting secrets for $DEST_ORG/${{ matrix.repo }}..."
+          gh secret set MY_SECRET \
+            --body "secret_value" \
+            --repo "$DEST_ORG/${{ matrix.repo }}"
+
+      - name: Set variables in destination repo
+        run: |
+          # Example: Set a variable named MY_VAR with value 'variable_value'
+          echo "Setting variables for $DEST_ORG/${{ matrix.repo }}..."
+          gh variable set MY_VAR \
+            --body "variable_value" \
+            --repo "$DEST_ORG/${{ matrix.repo }}"
+
