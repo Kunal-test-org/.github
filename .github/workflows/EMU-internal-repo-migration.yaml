@@ -24,20 +24,20 @@ on:
       snow_app_id:
         description: 'CVS App ID (e.g., AMC012345)'
         required: false
+
 jobs:
   prepare-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Convert repo list to matrix
         id: set-matrix
         run: |
           repos="${{ github.event.inputs.repo_list }}"
-          if [ -z "$repos" ]; then
-            echo 'matrix={"include":[{"repo":"__none__"}]}' >> $GITHUB_OUTPUT
-          else
-            json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})' | jq -c '{include: .}')
-            echo "matrix=$json" >> $GITHUB_OUTPUT
-          fi
+          json=$(echo "$repos" | jq -R 'split(",") | map({repo: .})' | jq -c '{include: .}')
+          echo "matrix=$json" >> $GITHUB_OUTPUT
+
 
   migrate-repos:
     needs: prepare-matrix
@@ -75,11 +75,11 @@ jobs:
             gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/$SRC_REPO"
             echo "Waiting for GitHub to register the new repository..."
             sleep 10
+          
           fi
 
           git push --mirror https://x-access-token:${GH_TOKEN}@github.com/$DEST_ORG/$DEST_REPO.git
           cd .. && rm -rf $SRC_REPO.git
-          
       - name: Set Admin and Metadata
         run: |
           echo "Setting admin access for $REPO_ADMIN..."
@@ -93,9 +93,8 @@ jobs:
               -H "Authorization: token ${GH_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
-              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}"
+              -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
           fi
-
   export-env-vars:
     needs: migrate-repos
     runs-on: ubuntu-latest
