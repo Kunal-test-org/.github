@@ -95,28 +95,40 @@ jobs:
               "https://api.github.com/repos/$DEST_ORG/${{ matrix.repo }}/properties/values" \
               -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
           fi
+          
   export-env-vars:
     needs: migrate-repos
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
       DEST_ORG: ${{ github.event.inputs.destination_org }}
+    strategy:
+      matrix:
+        repo: ${{ fromJson(needs.prepare-matrix.outputs.matrix).include[*].repo }}
     steps:
-      - name: List environments
-        id: list-envs
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Export environment variables for ${{ matrix.repo }}
         run: |
           repo="${{ matrix.repo }}"
+          echo "Fetching environments for $DEST_ORG/$repo..."
+
           envs=$(curl -s -H "Authorization: token $GH_TOKEN" \
             https://api.github.com/repos/$DEST_ORG/$repo/environments | jq -r '.environments[].name')
-          echo "envs=$envs" >> $GITHUB_OUTPUT
-      - name: Export environment variables
-        run: |
-          repo="${{ matrix.repo }}"
-          for env in ${{ steps.list-envs.outputs.envs }}; do
+
+          if [ -z "$envs" ]; then
+            echo "No environments found for $repo"
+            exit 0
+          fi
+
+          for env in $envs; do
             echo "Environment: $env"
             curl -s -H "Authorization: token $GH_TOKEN" \
               https://api.github.com/repos/$DEST_ORG/$repo/environments/$env/variables \
               | jq '.variables[] | {name: .name, value: .value}'
           done
+
+
 
 
