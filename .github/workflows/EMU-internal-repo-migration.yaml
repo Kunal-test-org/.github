@@ -96,7 +96,7 @@ jobs:
               -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
           fi
           
-      - name: Copy environment variables from source to destination
+      - name: Auto-create environments and copy variables
         run: |
           SRC_REPO="${{ matrix.repo }}"
           DEST_REPO="${{ matrix.repo }}"
@@ -111,13 +111,13 @@ jobs:
           fi
 
           for env in $envs; do
-            echo "Copying variables from environment: $env"
+            echo "Triggering environment creation in $DEST_ORG/$DEST_REPO for $env..."
+            gh api -X PUT /repos/$DEST_ORG/$DEST_REPO/environments/$env || true
 
-            # Get variables from source
+            echo "Copying variables from environment: $env"
             vars=$(curl -s -H "Authorization: token $GH_TOKEN" \
               https://api.github.com/repos/$SOURCE_ORG/$SRC_REPO/environments/$env/variables)
 
-            # Loop through each variable and recreate in destination
             echo "$vars" | jq -c '.variables[]' | while read var; do
               name=$(echo "$var" | jq -r '.name')
               value=$(echo "$var" | jq -r '.value')
@@ -130,7 +130,6 @@ jobs:
                 -d "{\"name\":\"$name\",\"value\":\"$value\"}"
             done
           done
-
 
 
 
