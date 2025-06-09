@@ -96,27 +96,41 @@ jobs:
               -d "{\"properties\":[{\"property_name\":\"snow-app-id\",\"value\":\"$SNOW_APP_ID\"}]}" || true
           fi
           
-      - name: Export environment variables for ${{ matrix.repo }}
+      - name: Copy environment variables from source to destination
         run: |
-          repo="${{ matrix.repo }}"
-          echo "Fetching environments for $DEST_ORG/$repo..."
+          SRC_REPO="${{ matrix.repo }}"
+          DEST_REPO="${{ matrix.repo }}"
 
+          echo "Fetching environments from $SOURCE_ORG/$SRC_REPO..."
           envs=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/$DEST_ORG/$repo/environments | jq -r '.environments[].name')
+            https://api.github.com/repos/$SOURCE_ORG/$SRC_REPO/environments | jq -r '.environments[].name')
 
           if [ -z "$envs" ]; then
-            echo "No environments found for $repo"
+            echo "No environments found in $SOURCE_ORG/$SRC_REPO"
             exit 0
           fi
 
           for env in $envs; do
-            echo "Environment: $env"
-            curl -s -H "Authorization: token $GH_TOKEN" \
-              https://api.github.com/repos/$DEST_ORG/$repo/environments/$env/variables \
-              | jq '.variables[] | {name: .name, value: .value}'
+            echo "Copying variables from environment: $env"
+
+            # Get variables from source
+            vars=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              https://api.github.com/repos/$SOURCE_ORG/$SRC_REPO/environments/$env/variables)
+
+            # Loop through each variable and recreate in destination
+            echo "$vars" | jq -c '.variables[]' | while read var; do
+              name=$(echo "$var" | jq -r '.name')
+              value=$(echo "$var" | jq -r '.value')
+
+              echo "Creating variable $name in $DEST_ORG/$DEST_REPO ($env)..."
+              curl -s -X PUT \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/$DEST_ORG/$DEST_REPO/environments/$env/variables/$name \
+                -d "{\"name\":\"$name\",\"value\":\"$value\"}"
+            done
           done
 
-     
 
 
 
