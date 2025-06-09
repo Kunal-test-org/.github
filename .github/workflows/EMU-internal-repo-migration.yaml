@@ -74,8 +74,7 @@ jobs:
           if ! gh repo view $DEST_ORG/$DEST_REPO &>/dev/null; then
             echo "Repository $DEST_ORG/$DEST_REPO already exists. Failing the job."
             exit 1
-          else           
-            echo "Repository does not exist. Proceeding with creation..."
+          else
             gh repo create "$DEST_ORG/$DEST_REPO" --private --description "Migrated from $SOURCE_ORG/$SRC_REPO"
             echo "Waiting for GitHub to register the new repository..."
             sleep 10 
